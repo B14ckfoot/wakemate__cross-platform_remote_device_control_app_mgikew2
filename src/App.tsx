@@ -1,135 +1,296 @@
-import React, { useState } from 'react';
-import { PlusCircle, Power, Moon, RefreshCw, PowerOff, Mouse, Keyboard, Music, X, Lock, Coffee, Clock, MessageSquare, ChevronLeft, ChevronRight, Volume, Volume2, VolumeX, Maximize, PlaySquare } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  PlusCircle, Power, Moon, RefreshCw, PowerOff, X, ChevronLeft,
+} from 'lucide-react';
 
-// Mock devices data
-const initialDevices = [
-  { id: '1', name: 'My PC', mac: '00:11:22:33:44:55', ip: '192.168.1.10', status: 'offline' },
-  { id: '2', name: 'MacBook Pro', mac: 'AA:BB:CC:DD:EE:FF', ip: '192.168.1.11', status: 'online' }
-];
+import { ServerProvider } from './context/ServerContext';
+import ServerSetup          from './components/ServerSetup';
+import MouseKeyboardControls from './components/MouseKeyboardControls';
+import deviceService         from './services/deviceService';
+
+// ✅ relative import (no "@/")
+import { checkDeviceStatus } from './utils/checkDeviceStatus';
 
 function App() {
-  const [devices, setDevices] = useState(initialDevices);
-  const [currentScreen, setCurrentScreen] = useState('home');
-  const [selectedDevice, setSelectedDevice] = useState(null);
-  const [showKeyboard, setShowKeyboard] = useState(false);
-  const [keyboardTab, setKeyboardTab] = useState('main');
-  const [activeDeviceId, setActiveDeviceId] = useState(null);
-  const [showAddDeviceModal, setShowAddDeviceModal] = useState(false);
-  const [newDeviceName, setNewDeviceName] = useState('');
-  const [newDeviceMac, setNewDeviceMac] = useState('');
-  const [newDeviceIp, setNewDeviceIp] = useState('');
+  /* ------------------------------------------------------------------ */
+  /* state                                                              */
+  /* ------------------------------------------------------------------ */
+  const [devices,        setDevices]        = useState([]);
+  const [currentScreen,  setCurrentScreen]  = useState<'home' | 'deviceControl'>('home');
+  const [selectedDevice, setSelectedDevice] = useState<any>(null);
+  const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
 
-  const openAddDeviceModal = () => setShowAddDeviceModal(true);
-  const closeAddDeviceModal = () => {
-    setShowAddDeviceModal(false);
-    setNewDeviceName('');
-    setNewDeviceMac('');
-    setNewDeviceIp('');
+  const [isLoading,      setIsLoading]      = useState(false);
+  const [errorMessage,   setErrorMessage]   = useState('');
+
+  /* “Add device” modal */
+  const [showAddModal,   setShowAddModal]   = useState(false);
+  const [newDeviceName,  setNewDeviceName]  = useState('');
+  const [newDeviceMac,   setNewDeviceMac]   = useState('');
+  const [newDeviceIp,    setNewDeviceIp]    = useState('');
+
+  /* ------------------------------------------------------------------ */
+  /* helpers                                                            */
+  /* ------------------------------------------------------------------ */
+
+  /** Pull list from server, then live‑probe each device */
+  const fetchDevices = async () => {
+    try {
+      setIsLoading(true); setErrorMessage('');
+      const res = await deviceService.getDevices();
+      if (res?.data?.devices) {
+        const enriched = await Promise.all(
+          res.data.devices.map(async (d:any) => ({
+            ...d,
+            status: (await checkDeviceStatus(d.ip)) ? 'online' : 'offline',
+          })),
+        );
+        setDevices(enriched);
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMessage('Failed to fetch devices from server');
+    } finally { setIsLoading(false); }
   };
 
-  const handleAddDevice = () => {
+  /* initial load + 15 s polling */
+  useEffect(() => {
+    const savedIp = localStorage.getItem('serverIp');
+    if (!savedIp) return;
+    deviceService.setServerAddress(savedIp);
+    fetchDevices();
+    const id = setInterval(fetchDevices, 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* ------------------------------------------------------------------ */
+  /* actions                                                            */
+  /* ------------------------------------------------------------------ */
+
+  const sendWake        = (d:any) => deviceAction(d, 'wake',        5_000);
+  const sendSleep       = (d:any) => deviceAction(d, 'sleep',       5_000);
+  const sendRestart     = (d:any) => deviceAction(d, 'restart',     0);
+  const sendShutdown    = (d:any) => deviceAction(d, 'shutdown',    5_000);
+
+  async function deviceAction(device:any, command:string, refreshDelay:number) {
+    try {
+      setIsLoading(true); setErrorMessage('');
+      const ok = command === 'wake'
+        ? await deviceService.sendWakeOnLan(device.id, device.mac)
+        : await deviceService.sendPowerCommand(device.id, device.ip, command);
+      alert(ok ? `${command} command sent to ${device.name}` : `Failed to send ${command}`);
+      if (refreshDelay) setTimeout(fetchDevices, refreshDelay);
+    } catch (err:any) {
+      console.error(err); alert(err.message ?? 'Action failed');
+    } finally { setIsLoading(false); }
+  }
+
+  /* add device */
+  const handleAddDevice = async () => {
     if (!newDeviceName || !newDeviceMac || !newDeviceIp) {
-      alert('Please fill all fields.');
-      return;
+      alert('Please fill all fields'); return;
     }
-    const newDevice = {
-      id: Date.now().toString(),
-      name: newDeviceName,
-      mac: newDeviceMac,
-      ip: newDeviceIp,
-      status: 'offline'
-    };
-    setDevices(prev => [...prev, newDevice]);
-    closeAddDeviceModal();
+    try {
+      setIsLoading(true);
+      const payload = { name:newDeviceName, mac:newDeviceMac, ip:newDeviceIp };
+      const ok = await deviceService.addDevice(payload);
+      if (ok) {
+        const online = await checkDeviceStatus(payload.ip);
+        setDevices(prev => [...prev, {
+          ...payload, id: Date.now().toString(), status: online ? 'online' : 'offline',
+        }]);
+        closeAddModal();
+      } else setErrorMessage('Server rejected device');
+    } catch (err:any) {
+      console.error(err); setErrorMessage(err.message ?? 'Add failed');
+    } finally { setIsLoading(false); }
   };
 
-  const handleDeleteDevice = (deviceId) => {
-    if (confirm('Are you sure you want to delete this device?')) {
-      setDevices(prev => prev.filter(device => device.id !== deviceId));
-      if (activeDeviceId === deviceId) setActiveDeviceId(null);
-    }
+  /* delete */
+  const handleDeleteDevice = async (id:string) => {
+    if (!confirm('Delete this device?')) return;
+    try {
+      setIsLoading(true);
+      if (await deviceService.removeDevice(id)) {
+        setDevices(prev => prev.filter(d => d.id !== id));
+        if (activeDeviceId === id) setActiveDeviceId(null);
+        if (selectedDevice?.id === id) { setSelectedDevice(null); setCurrentScreen('home'); }
+      } else setErrorMessage('Delete failed');
+    } catch (err:any) {
+      console.error(err); setErrorMessage(err.message ?? 'Delete failed');
+    } finally { setIsLoading(false); }
   };
 
-  const sendWakeOnLanPacket = (device) => {
-    console.log(`Sending WoL packet to ${device.name} (${device.mac})`);
-    alert(`Wake command sent to ${device.name}`);
+  /* UI helpers */
+  const openAddModal  = () => setShowAddModal(true);
+  const closeAddModal = () => {
+    setShowAddModal(false); setErrorMessage('');
+    setNewDeviceName(''); setNewDeviceMac(''); setNewDeviceIp('');
   };
 
-  const sendPowerCommand = (device, command) => {
-    console.log(`Sending ${command} command to ${device.name} (${device.ip})`);
-    alert(`${command} command sent to ${device.name}`);
-  };
+  /* ------------------------------------------------------------------ */
+  /*  RENDER‑TREE                                                       */
+  /* ------------------------------------------------------------------ */
 
-  const navigateTo = (screen, device = null) => {
-    setCurrentScreen(screen);
-    setShowKeyboard(false);
-    setKeyboardTab('main');
-    if (device) setSelectedDevice(device);
-  };
+  /* status‑dot — now animated (fade & scale) */
+  const StatusDot = ({ status }:{status:'online'|'offline'}) => (
+    <span
+      className={`
+        w-3 h-3 rounded-full transition-all duration-500 ease-in-out transform
+        ${status === 'online' ? 'bg-green-400 scale-110' : 'bg-gray-400 scale-100'}
+      `}
+    />
+  );
 
-  const toggleActiveDevice = (deviceId) => {
-    if (activeDeviceId === deviceId) {
-      setActiveDeviceId(null);
-    } else {
-      setActiveDeviceId(deviceId);
-      const device = devices.find(d => d.id === deviceId);
-      if (device) setSelectedDevice(device);
-    }
-  };
+  /* Home ------------------------------------------------------------- */
+  const Home = () => (
+    <div className="min-h-screen bg-gray-900 p-6">
+      <div className="max-w-md mx-auto">
+        <ServerSetup />
 
-  const handleMouseMovement = (deltaX, deltaY) => {
-    if (selectedDevice) {
-      console.log(`Mouse move: ${deltaX}, ${deltaY} on ${selectedDevice.name}`);
-    }
-  };
+        <h1 className="text-3xl font-bold text-white mb-6">WakeMATE</h1>
+        <p className="text-gray-300 mb-8">Remote device control at your fingertips</p>
 
-  const handleLeftClick = () => {
-    if (selectedDevice) console.log(`Left click on ${selectedDevice.name}`);
-  };
+        {errorMessage && <div className="bg-red-500 text-white p-4 rounded mb-4">{errorMessage}</div>}
 
-  const handleRightClick = () => {
-    if (selectedDevice) console.log(`Right click on ${selectedDevice.name}`);
-  };
+        <div className="mb-8">
+          {devices.length === 0 ? (
+            <div className="bg-purple-900 p-6 rounded text-center text-gray-300">
+              No devices yet — add one below.
+            </div>
+          ) : (
+            devices.map(device => (
+              <div
+                key={device.id}
+                className={`bg-purple-900 p-4 mb-4 rounded relative cursor-pointer
+                  transition-all ${activeDeviceId === device.id ? 'border-2 border-green-500' : ''}`}
+                onClick={() => setActiveDeviceId(activeDeviceId === device.id ? null : device.id)}
+              >
+                {/* delete mini‑button */}
+                <button
+                  onClick={e => { e.stopPropagation(); handleDeleteDevice(device.id); }}
+                  className="absolute top-3 right-3 p-1 bg-red-500 rounded-full text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
 
-  const handleKeyPress = (key) => {
-    if (selectedDevice) console.log(`Key press: ${key} on ${selectedDevice.name}`);
-  };
+                <div className="flex justify-between items-center mb-2">
+                  <h2 className="text-xl font-bold text-white">{device.name}</h2>
+                  <div className="flex items-center">
+                    <span className="text-sm text-gray-300 mr-2">{device.status}</span>
+                    <StatusDot status={device.status} />
+                  </div>
+                </div>
 
-  const handleMediaCommand = (command) => {
-    if (selectedDevice) console.log(`Media command: ${command} on ${selectedDevice.name}`);
-  };
+                <p className="text-gray-300 text-sm">MAC: {device.mac}</p>
+                <p className="text-gray-300 text-sm mb-4">IP: {device.ip}</p>
 
-  const toggleKeyboard = () => setShowKeyboard(!showKeyboard);
-  const switchKeyboardTab = (tab) => setKeyboardTab(tab);
+                {activeDeviceId === device.id && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <ActionBtn icon={<Power  />}   text="Wake"     onClick={() => sendWake(device)} />
+                      <ActionBtn icon={<Moon   />}   text="Sleep"    onClick={() => sendSleep(device)} />
+                      <ActionBtn icon={<RefreshCw/>} text="Restart"  onClick={() => sendRestart(device)} />
+                      <ActionBtn icon={<PowerOff/>}  text="Shutdown" onClick={() => sendShutdown(device)} />
+                    </div>
 
-  const mainKeyboard = [['1','2','3','4','5','6','7','8','9','0'],['q','w','e','r','t','y','u','i','o','p'],['a','s','d','f','g','h','j','k','l'],['z','x','c','v','b','n','m',',','.']];
-  const specialKeyboard = [['!','@','#','$','%','^','&','*','(',')'],['-','_','=','+','[',']','{','}','\\','|'],['/','?',';',':','\'','"','<','>','~','`'],['€','£','¥','©','®','™','°','•','§','¶']];
+                    <button
+                      className="w-full bg-green-500 p-3 rounded hover:bg-green-400 transition"
+                      onClick={() => { setSelectedDevice(device); setCurrentScreen('deviceControl'); }}
+                    >
+                      Control Device
+                    </button>
+                  </>
+                )}
+              </div>
+            ))
+          )}
+        </div>
 
-  const renderScreen = () => {
-    // [ OMITTED for brevity, same renderScreen as your last one ]
-    // It includes the home screen, device control, mouse control, keyboard control, and media control.
-  };
+        <button
+          onClick={openAddModal}
+          className="w-full p-4 bg-purple-700 rounded flex justify-center items-center hover:bg-purple-600 transition"
+        >
+          <PlusCircle className="w-5 h-5 mr-2 text-white" />
+          Add Device
+        </button>
+      </div>
+    </div>
+  );
 
+  /* generic “action” button used above */
+  const ActionBtn = ({ icon, text, onClick }:{icon:JSX.Element,text:string,onClick:()=>void}) => (
+    <button
+      className="bg-green-500 p-3 rounded flex items-center justify-center hover:bg-green-400 transition"
+      onClick={e => { e.stopPropagation(); onClick(); }}
+    >
+      {React.cloneElement(icon, { className:'w-5 h-5 mr-2 text-black' })}
+      <span className="text-black font-bold">{text}</span>
+    </button>
+  );
+
+  /* Device‑control ---------------------------------------------------- */
+  const DeviceControl = () => selectedDevice && (
+    <div className="min-h-screen bg-gray-900 p-6">
+      <div className="max-w-md mx-auto">
+        <button
+          className="mb-4 flex items-center text-white bg-purple-800 px-4 py-2 rounded"
+          onClick={() => setCurrentScreen('home')}
+        >
+          <ChevronLeft className="w-4 h-4 mr-1" /> Back
+        </button>
+
+        <h1 className="text-3xl font-bold text-white mb-2">{selectedDevice.name}</h1>
+        <p className="text-gray-300 mb-6">
+          {selectedDevice.status === 'online' ? 'Currently online' : 'Currently offline'}
+        </p>
+
+        <MouseKeyboardControls
+          deviceId={selectedDevice.id}
+          deviceIp={selectedDevice.ip}
+          onBack={() => setCurrentScreen('home')}
+        />
+      </div>
+    </div>
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* RENDER                                                             */
+  /* ------------------------------------------------------------------ */
   return (
-    <div className="min-h-screen bg-gray-900">
-      {renderScreen()}
+    <ServerProvider>
+      {isLoading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="animate-spin h-12 w-12 border-4 border-white border-t-transparent rounded-full" />
+        </div>
+      )}
 
-      {/* Add Device Modal */}
-      {showAddDeviceModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-          <div className="bg-gray-800 p-6 rounded-lg w-80">
+      {currentScreen === 'home'          && <Home />}
+      {currentScreen === 'deviceControl' && <DeviceControl />}
+
+      {/* Add‑device modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded w-80">
             <h2 className="text-2xl font-bold text-white mb-4">Add Device</h2>
-            <input type="text" placeholder="Device Name" className="w-full mb-3 p-2 rounded bg-gray-700 text-white" value={newDeviceName} onChange={(e) => setNewDeviceName(e.target.value)} />
-            <input type="text" placeholder="MAC Address" className="w-full mb-3 p-2 rounded bg-gray-700 text-white" value={newDeviceMac} onChange={(e) => setNewDeviceMac(e.target.value)} />
-            <input type="text" placeholder="IP Address" className="w-full mb-4 p-2 rounded bg-gray-700 text-white" value={newDeviceIp} onChange={(e) => setNewDeviceIp(e.target.value)} />
+
+            {errorMessage && <div className="bg-red-500 text-white p-2 rounded mb-3 text-sm">{errorMessage}</div>}
+
+            <input className="w-full mb-3 p-2 rounded bg-gray-700 text-white" placeholder="Name"
+              value={newDeviceName} onChange={e => setNewDeviceName(e.target.value)} />
+            <input className="w-full mb-3 p-2 rounded bg-gray-700 text-white" placeholder="MAC (00:11:22:33:44:55)"
+              value={newDeviceMac} onChange={e => setNewDeviceMac(e.target.value)} />
+            <input className="w-full mb-4 p-2 rounded bg-gray-700 text-white" placeholder="IP (192.168.x.x)"
+              value={newDeviceIp} onChange={e => setNewDeviceIp(e.target.value)} />
+
             <div className="flex justify-between">
               <button className="bg-green-500 text-black px-4 py-2 rounded" onClick={handleAddDevice}>Add</button>
-              <button className="bg-red-500 text-black px-4 py-2 rounded" onClick={closeAddDeviceModal}>Cancel</button>
+              <button className="bg-red-500 text-black px-4 py-2 rounded"  onClick={closeAddModal}>Cancel</button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </ServerProvider>
   );
 }
 
