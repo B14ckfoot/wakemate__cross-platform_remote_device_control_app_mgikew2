@@ -1,69 +1,24 @@
-import React, { useState } from 'react';
-import DeviceButton from '../components/DeviceButton';
-import { PlusCircle } from 'lucide-react';
+import React from 'react';
+import { Monitor } from 'lucide-react';
 
-interface Device {
-  id: string;
-  name: string;
-  status: 'online' | 'offline';
-  ipAddress: string;
-  macAddress: string;
+interface HomeScreenProps {
+  onNavigate: () => void;
 }
 
-const HomeScreen: React.FC = () => {
-  const [devices, setDevices] = useState<Device[]>([
-    { 
-      id: '1', 
-      name: 'Home PC', 
-      status: 'offline', 
-      ipAddress: '192.168.1.100', 
-      macAddress: '00:1A:2B:3C:4D:5E' 
-    },
-    { 
-      id: '2', 
-      name: 'Work Laptop', 
-      status: 'online', 
-      ipAddress: '192.168.1.101', 
-      macAddress: '00:1A:2B:3C:4D:5F' 
-    },
-  ]);
-
-  const handleDevicePress = (device: Device) => {
-    console.log('Device pressed:', device);
-    // Here you would implement the wake-on-LAN functionality
-  };
-
-  const handleAddDevice = () => {
-    console.log('Add device pressed');
-    // Here you would navigate to an add device screen
-  };
-
+const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
   return (
-    <div className="min-h-screen bg-gray-900 p-6">
-      <div className="max-w-md mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-6">WakeMATE</h1>
-        <p className="text-gray-300 mb-8">Remote device control at your fingertips</p>
-        
-        <div className="mb-8">
-          {devices.map(device => (
-            <DeviceButton 
-              key={device.id}
-              name={device.name}
-              status={device.status}
-              onPress={() => handleDevicePress(device)}
-            />
-          ))}
-        </div>
-        
-        <button 
-          onClick={handleAddDevice}
-          className="w-full p-4 bg-purple-700 rounded-lg flex items-center justify-center
-                    transition-all duration-300 hover:bg-purple-600"
-        >
-          <PlusCircle className="w-5 h-5 mr-2 text-white" />
-          <span className="text-white font-medium">Add Device</span>
-        </button>
-      </div>
+    <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6 text-center">
+      <Monitor size={64} className="text-green-400 mb-6" />
+      <h1 className="text-4xl font-bold text-white mb-4">Welcome to WakeMATE</h1>
+      <p className="text-gray-400 mb-8 text-lg">
+        Remotely wake, control, and manage your computers effortlessly.
+      </p>
+      <button
+        onClick={onNavigate}
+        className="bg-green-500 hover:bg-green-400 text-black font-bold px-6 py-3 rounded-full text-lg"
+      >
+        Manage Devices
+      </button>
     </div>
   );
 };
