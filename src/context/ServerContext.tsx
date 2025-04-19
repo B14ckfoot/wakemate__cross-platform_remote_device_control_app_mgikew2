@@ -49,6 +49,7 @@ export const ServerProvider: React.FC<ServerProviderProps> = ({ children }) => {
     
     try {
       setConnectionError(null);
+      console.log('Testing connection to server...');
       
       // Try to get server status as a connection test
       const response = await deviceService.sendCommand({
@@ -56,13 +57,15 @@ export const ServerProvider: React.FC<ServerProviderProps> = ({ children }) => {
         params: {}
       });
       
+      console.log('Connection test response:', response);
+      
       if (response.status === "success") {
         setIsConnected(true);
         setConnectionError(null);
         return true;
       } else {
         setIsConnected(false);
-        setConnectionError('Server returned an error');
+        setConnectionError('Server returned an error: ' + (response.message || 'Unknown error'));
         return false;
       }
     } catch (error) {
@@ -71,8 +74,8 @@ export const ServerProvider: React.FC<ServerProviderProps> = ({ children }) => {
       
       // Provide a more specific error message based on the error
       if (error instanceof Error) {
-        if (error.message.includes('Network Error')) {
-          setConnectionError('Network error: Unable to reach the server');
+        if (error.message.includes('Network Error') || error.message.includes('Failed to fetch')) {
+          setConnectionError('Network error: Unable to reach the server. Make sure the server is running.');
         } else if (error.message.includes('404')) {
           setConnectionError('Server found but API endpoint not available');
         } else if (error.message.includes('ECONNREFUSED')) {

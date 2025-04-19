@@ -8,6 +8,7 @@ import SettingsScreen from './screens/SettingsScreen';
 import { Device } from './types/device';
 import { useAutoDiscoverServer } from './hooks/useAutoDiscoverServer';
 import { deviceService } from './services/deviceService';
+import { checkDeviceStatus } from './utils/checkDeviceStatus';
 
 type AppScreen = 'home' | 'deviceSelect' | 'deviceDetail' | 'controls' | 'addDevice' | 'settings';
 
@@ -37,6 +38,38 @@ function App() {
     }
   }, [serverIp]);
 
+  // Check status of devices periodically
+  useEffect(() => {
+    if (devices.length === 0) return;
+
+    const checkStatus = async () => {
+      const updatedDevices = [...devices];
+      let changed = false;
+
+      for (let i = 0; i < updatedDevices.length; i++) {
+        try {
+          const isOnline = await checkDeviceStatus(updatedDevices[i].ip);
+          if (updatedDevices[i].status !== (isOnline ? 'online' : 'offline')) {
+            updatedDevices[i].status = isOnline ? 'online' : 'offline';
+            changed = true;
+          }
+        } catch (error) {
+          console.error(`Error checking status for device ${updatedDevices[i].name}:`, error);
+        }
+      }
+
+      if (changed) {
+        setDevices(updatedDevices);
+      }
+    };
+
+    // Check status immediately and then every 60 seconds
+    checkStatus();
+    const interval = setInterval(checkStatus, 60000);
+
+    return () => clearInterval(interval);
+  }, [devices]);
+
   const serverOnline = serverIp != null && !error;
 
   const handleDeviceAdded = (newDevice: Device) => {
@@ -63,9 +96,8 @@ function App() {
       case 'home':
         return (
           <HomeScreen
-            onNavigate={() => setCurrentScreen('deviceSelect')}
+            onNavigate={() => setCurrentScreen(devices.length > 0 ? 'deviceSelect' : 'addDevice')}
             onOpenSettings={() => setCurrentScreen('settings')}
-            serverOnline={serverOnline}
           />
         );
       case 'deviceSelect':
@@ -74,30 +106,28 @@ function App() {
             devices={devices}
             onSelectDevice={(device) => {
               setSelectedDevice(device);
-              setCurrentScreen('deviceDetail');
+              // Skip device detail screen and go directly to controls
+              setCurrentScreen('controls'); 
             }}
             onAddDevice={() => setCurrentScreen('addDevice')}
             onOpenSettings={() => setCurrentScreen('settings')}
-            serverOnline={serverOnline}
           />
         );
-      case 'deviceDetail':
+      case 'deviceDetail': // We'll keep this case for backward compatibility
         return (
           <DeviceDetailScreen
             device={selectedDevice}
             onBack={() => setCurrentScreen('deviceSelect')}
             onControl={() => setCurrentScreen('controls')}
             onOpenSettings={() => setCurrentScreen('settings')}
-            serverOnline={serverOnline}
           />
         );
       case 'controls':
         return (
           <ControlsScreen
             device={selectedDevice}
-            onBack={() => setCurrentScreen('deviceDetail')}
+            onBack={() => setCurrentScreen('deviceSelect')}
             onOpenSettings={() => setCurrentScreen('settings')}
-            serverOnline={serverOnline}
           />
         );
       case 'addDevice':
@@ -109,7 +139,6 @@ function App() {
               setCurrentScreen('deviceSelect');
             }}
             onOpenSettings={() => setCurrentScreen('settings')}
-            serverOnline={serverOnline}
           />
         );
       case 'settings':
@@ -120,7 +149,7 @@ function App() {
             onClearDevices={handleClearDevices}
             onDeleteDevice={handleDeleteDevice}
             onUpdateDevice={handleUpdateDevice}
-            serverOnline={serverOnline} // 🔥 Pass this to show "Server Connected: Yes/No"
+            serverOnline={serverOnline}
             searching={searching}
             retry={retry}
           />

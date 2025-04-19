@@ -52,7 +52,7 @@ const DeviceSelector: React.FC<DeviceSelectorProps> = ({
             <div className="w-10" />
           )}
 
-          <h1 className="text-lg font-semibold text-gray-800">Select a computer</h1>
+          <h1 className="text-lg font-semibold text-gray-800">Select a computer to control</h1>
 
           {/* Empty space to balance header, no Add button */}
           <div className="w-10" />
@@ -115,9 +115,14 @@ const DeviceItem: React.FC<DeviceItemProps> = ({ device, isSelected, onSelect })
   >
     <div className="flex items-center">
       <div className="w-8 h-8 flex items-center justify-center">
-        <Wifi className="w-5 h-5 text-green-500" />
+        <Wifi className={`w-5 h-5 ${device.status === 'online' ? 'text-green-500' : 'text-gray-400'}`} />
       </div>
-      <span className="ml-4 text-gray-800 text-lg">{device.name}</span>
+      <div className="ml-4">
+        <span className="text-gray-800 text-lg">{device.name}</span>
+        <span className="block text-sm text-gray-500">
+          {device.status === 'online' ? 'Online' : 'Offline'}
+        </span>
+      </div>
     </div>
     {isSelected && <Check className="w-6 h-6 text-green-500" />}
   </button>
