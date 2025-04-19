@@ -1,7 +1,15 @@
 import React, { useState, useRef } from 'react';
 import { ChevronLeft, Wifi, WifiOff, Keyboard, Power, Music, Mouse, ChevronUp, ChevronDown, Hash, AtSign } from 'lucide-react';
+import { Device } from '../types/device';
+import SettingsButton from '../components/SettingsButton';
 
-const WakeMATE = () => {
+interface ControlsScreenProps {
+  device: Device | null;
+  onBack: () => void;
+  onOpenSettings: () => void;
+}
+
+const ControlsScreen: React.FC<ControlsScreenProps> = ({ device, onBack, onOpenSettings }) => {
   const [activeControl, setActiveControl] = useState(null);
   const [deviceStatus, setDeviceStatus] = useState('online');
   const [keyboardMode, setKeyboardMode] = useState('letters'); // 'letters', 'numbers', 'special'
@@ -199,23 +207,29 @@ const WakeMATE = () => {
   };
   
   return (
-    <div className="bg-gray-900 p-4 text-white flex flex-col min-h-screen">
+    <div className="bg-gray-900 p-4 text-white flex flex-col min-h-screen relative">
+      {/* Settings Button */}
+      <SettingsButton onPress={onOpenSettings} />
+      
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">
-          <button className="text-white mr-2">
+          <button 
+            className="text-white mr-2"
+            onClick={onBack} // Added the onBack handler to make the back button work
+          >
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-sm font-medium">Marco's MacBook Pro</h1>
+          <h1 className="text-sm font-medium">{device ? device.name : "Device"}</h1>
         </div>
         
         {deviceStatus === 'online' ? (
-          <div className="flex items-center text-green-400 text-xs">
+          <div className="flex items-center text-green-400 text-xs mr-8">
             <Wifi className="w-4 h-4 mr-1" />
             <span>Connected</span>
           </div>
         ) : (
-          <div className="flex items-center text-red-400 text-xs">
+          <div className="flex items-center text-red-400 text-xs mr-8">
             <WifiOff className="w-4 h-4 mr-1" />
             <span>Offline</span>
           </div>
@@ -223,25 +237,23 @@ const WakeMATE = () => {
       </div>
       
       {/* Trackpad container */}
-<div className="relative bg-gray-800 h-[50vh] w-[70vw] max-w-md rounded-lg mb-8 mx-auto">
-
-{/* Trackpad content */}
-<div className="w-full h-full flex items-center justify-center">
-  <p className="text-gray-400 text-sm">Trackpad</p>
-</div>
-
-{/* Scroll controls -- hugging outside bottom-right */}
-<div className="absolute bottom-0 right-0 translate-x-11 translate-y--1 flex flex-col w-10 bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-  <button className="h-10 flex items-center justify-center">
-    <ChevronUp className="w-5 h-5" />
-  </button>
-  <div className="border-t border-gray-700"></div>
-  <button className="h-10 flex items-center justify-center">
-    <ChevronDown className="w-5 h-5" />
-  </button>
-</div>
-
-</div>
+      <div className="relative bg-gray-800 h-[50vh] w-[70vw] max-w-md rounded-lg mb-8 mx-auto">
+        {/* Trackpad content */}
+        <div className="w-full h-full flex items-center justify-center">
+          <p className="text-gray-400 text-sm">Trackpad</p>
+        </div>
+        
+        {/* Scroll controls -- hugging outside bottom-right */}
+        <div className="absolute bottom-0 right-0 translate-x-11 translate-y--1 flex flex-col w-10 bg-gray-800 rounded-lg overflow-hidden shadow-lg">
+          <button className="h-10 flex items-center justify-center">
+            <ChevronUp className="w-5 h-5" />
+          </button>
+          <div className="border-t border-gray-700"></div>
+          <button className="h-10 flex items-center justify-center">
+            <ChevronDown className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
       
       {/* Mouse buttons - simple visual layout */}
       <div className="flex space-x-1 h-10 mb-4">
@@ -273,7 +285,6 @@ const WakeMATE = () => {
           </button>
         </div>
       </div>  
-
       
       {/* Expanded control panel content */}
       {activeControl === 'media' && renderMediaControls()}
@@ -283,4 +294,4 @@ const WakeMATE = () => {
   );
 };
 
-export default WakeMATE;
+export default ControlsScreen;
