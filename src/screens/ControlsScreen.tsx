@@ -256,7 +256,7 @@ const ControlsScreen: React.FC<ControlsScreenProps> = ({ device, onBack, onOpenS
       </div>
       
       {/* Mouse buttons - simple visual layout */}
-      <div className="flex space-x-1 h-10 mb-4">
+      <div className="flex space-x-1 h-10 w-72 mx-auto mb-4">
         <button className="flex-1 bg-gray-700 rounded-l-lg"></button>
         <button className="w-14 bg-gray-600 border-l border-r border-gray-800"></button>
         <button className="flex-1 bg-gray-700 rounded-r-lg"></button>
